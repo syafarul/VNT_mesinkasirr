@@ -6,7 +6,7 @@
 <div class="row justify-content-center">
     <div class="col-lg-4 col-md-12">
         <div class="white-box analytics-info">
-            <h3 class="box-title">Total Admin</h3>
+            <h3 class="box-title">Total oi</h3>
             <ul class="list-inline two-part d-flex align-items-center mb-0">
                 <li>
                     <div class="icon-card">
