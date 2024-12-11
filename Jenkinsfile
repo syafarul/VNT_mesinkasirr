@@ -15,16 +15,26 @@ pipeline {
                     try {
                         powershell '''
                         echo "Checking if Docker is installed..."
-                        docker --version || { echo "Docker is not installed"; exit 1; }
+                        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+                            echo "Docker is not installed"
+                            exit 1
+                        }
 
                         echo "Checking if Docker Compose is installed..."
-                        docker-compose --version || { echo "Docker Compose is not installed"; exit 1; }
+                        if (-not (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
+                            echo "Docker Compose is not installed"
+                            exit 1
+                        }
 
                         echo "Stopping and cleaning up previous containers..."
-                        docker-compose down || true
+                        docker-compose down || Write-Host "No containers to stop."
 
                         echo "Removing Docker network if exists..."
-                        docker network rm ${NETWORK_NAME} || echo "Network does not exist, skipping."
+                        if (docker network ls --filter name=${NETWORK_NAME} -q) {
+                            docker network rm ${NETWORK_NAME}
+                        } else {
+                            echo "Network does not exist, skipping."
+                        }
                         '''
                     } catch (Exception e) {
                         error "Preparation stage failed: ${e.message}"
@@ -75,11 +85,4 @@ pipeline {
             }
         }
     }
-}
-
-
-git changelog: false, poll: false, url: 'https://github.com/syafarul/VNT_mesinkasirr.git'
-
-withDockerRegistry(credentialsId: 'docker_kasirVNT', toolName: 'Docker') {
-
 }
