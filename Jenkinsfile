@@ -5,7 +5,7 @@ pipeline {
         NETWORK_NAME = 'kasir_vnt'
         MYSQL_ROOT_PASSWORD = 'farul123'
         MYSQL_DATABASE = 'vnt_kasir'
-        REGISTRY = 'https://index.docker.io/v1/' // Ubah sesuai URL registry Anda
+        REGISTRY = 'https://index.docker.io/v1/'
     }
     stages {
         stage('Preparation') {
@@ -37,7 +37,7 @@ pipeline {
             steps {
                 echo 'Building Docker images...'
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', 
+                    withCredentials([usernamePassword(credentialsId: 'docker_kasirVNT', 
                                                       usernameVariable: 'REGISTRY_USERNAME', 
                                                       passwordVariable: 'REGISTRY_PASSWORD')]) {
                         try {
@@ -65,29 +65,11 @@ pipeline {
                 script {
                     try {
                         powershell '''
-                        echo "Bringing up containers with Docker Compose..."
+                        echo "Starting containers..."
                         docker-compose up -d
                         '''
                     } catch (Exception e) {
                         error "Failed to start containers: ${e.message}"
-                    }
-                }
-            }
-        }
-
-        stage('Cleanup') {
-            steps {
-                echo 'Cleaning up Docker resources...'
-                script {
-                    try {
-                        powershell '''
-                        echo "Stopping and removing containers..."
-                        docker-compose down
-                        echo "Removing Docker network..."
-                        docker network rm ${NETWORK_NAME}
-                        '''
-                    } catch (Exception e) {
-                        echo "Failed to clean up Docker resources: ${e.message}"
                     }
                 }
             }
