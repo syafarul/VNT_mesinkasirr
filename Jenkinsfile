@@ -12,8 +12,7 @@ pipeline {
                 echo 'Checking Docker environment and cleaning up previous resources...'
                 script {
                     try {
-                        sh '''
-                        set -e
+                        powershell '''
                         echo "Checking if Docker is installed..."
                         docker --version || { echo "Docker is not installed"; exit 1; }
 
@@ -38,7 +37,7 @@ pipeline {
                 echo 'Building Docker images...'
                 script {
                     try {
-                        sh '''
+                        powershell '''
                         echo "Building images with Docker Compose..."
                         docker-compose build --no-cache --pull
                         '''
@@ -54,8 +53,8 @@ pipeline {
                 echo 'Starting containers with Docker Compose...'
                 script {
                     try {
-                        sh '''
-                        docker-compose up -d
+                        powershell '''
+                        start docker-compose up -d
                         echo "Containers are starting, waiting for services to initialize..."
                         sleep 20
 
@@ -74,9 +73,9 @@ pipeline {
                 echo 'Validating application container...'
                 script {
                     try {
-                        sh '''
+                        powershell '''
                         echo "Checking if application container is running..."
-                        docker ps | grep ${DOCKER_IMAGE} || { echo "Application container not running!"; exit 1; }
+                        docker ps | findstr ${DOCKER_IMAGE} || { echo "Application container not running!"; exit 1; }
 
                         echo "Checking application accessibility on port 2022..."
                         curl -I http://localhost:2022 -m 15 || { echo "Application not reachable!"; exit 1; }
@@ -93,9 +92,9 @@ pipeline {
                 echo 'Validating database connection...'
                 script {
                     try {
-                        sh '''
+                        powershell '''
                         echo "Checking if database container is running..."
-                        docker ps | grep kasir_vnt_db || { echo "Database container not running!"; exit 1; }
+                        docker ps | findstr kasir_vnt_db || { echo "Database container not running!"; exit 1; }
 
                         echo "Validating database connection..."
                         docker exec $(docker ps -qf "name=kasir_vnt_db") mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "USE ${MYSQL_DATABASE};" || { echo "Database validation failed!"; exit 1; }
@@ -112,7 +111,7 @@ pipeline {
         always {
             echo 'Cleaning up containers and networks...'
             script {
-                sh '''
+                powershell '''
                 docker-compose down
                 echo "Cleanup completed."
                 '''
