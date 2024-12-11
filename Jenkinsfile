@@ -76,3 +76,10 @@ pipeline {
         }
     }
 }
+
+
+git changelog: false, poll: false, url: 'https://github.com/syafarul/VNT_mesinkasirr.git'
+
+withDockerRegistry(credentialsId: 'docker_kasirVNT', toolName: 'Docker') {
+
+}
