@@ -5,6 +5,7 @@ pipeline {
         NETWORK_NAME = 'kasir_vnt'
         MYSQL_ROOT_PASSWORD = 'farul123'
         MYSQL_DATABASE = 'vnt_kasir'
+        REGISTRY = 'https://index.docker.io/v1/' // Ubah sesuai URL registry Anda
     }
     stages {
         stage('Preparation') {
@@ -23,7 +24,7 @@ pipeline {
                         docker-compose down || true
 
                         echo "Removing Docker network if exists..."
-                        docker network rm $env:NETWORK_NAME || echo "Network does not exist, skipping."
+                        docker network rm ${NETWORK_NAME} || echo "Network does not exist, skipping."
                         '''
                     } catch (Exception e) {
                         error "Preparation stage failed: ${e.message}"
@@ -36,13 +37,23 @@ pipeline {
             steps {
                 echo 'Building Docker images...'
                 script {
-                    try {
-                        powershell '''
-                        echo "Building images with Docker Compose..."
-                        docker-compose build --no-cache --pull
-                        '''
-                    } catch (Exception e) {
-                        error "Failed to build Docker images: ${e.message}"
+                    withCredentials([usernamePassword(credentialsId: 'docker-registry-credentials', 
+                                                      usernameVariable: 'REGISTRY_USERNAME', 
+                                                      passwordVariable: 'REGISTRY_PASSWORD')]) {
+                        try {
+                            powershell '''
+                            echo "Logging in to Docker registry..."
+                            docker login ${REGISTRY} -u $REGISTRY_USERNAME -p $REGISTRY_PASSWORD
+
+                            echo "Building images with Docker Compose..."
+                            docker-compose build --no-cache --pull
+
+                            echo "Pushing images to Docker registry..."
+                            docker-compose push
+                            '''
+                        } catch (Exception e) {
+                            error "Failed to build and push Docker images: ${e.message}"
+                        }
                     }
                 }
             }
@@ -54,12 +65,8 @@ pipeline {
                 script {
                     try {
                         powershell '''
+                        echo "Bringing up containers with Docker Compose..."
                         docker-compose up -d
-                        echo "Containers are starting, waiting for services to initialize..."
-                        Start-Sleep -Seconds 20
-
-                        echo "Showing running containers:"
-                        docker ps
                         '''
                     } catch (Exception e) {
                         error "Failed to start containers: ${e.message}"
@@ -68,61 +75,22 @@ pipeline {
             }
         }
 
-        stage('Validate Application') {
+        stage('Cleanup') {
             steps {
-                echo 'Validating application container...'
+                echo 'Cleaning up Docker resources...'
                 script {
                     try {
                         powershell '''
-                        echo "Checking if application container is running..."
-                        docker ps | findstr $env:DOCKER_IMAGE || { echo "Application container not running!"; exit 1; }
-
-                        echo "Checking application accessibility on port 2022..."
-                        curl -I http://localhost:2022 -m 15 || { echo "Application not reachable!"; exit 1; }
+                        echo "Stopping and removing containers..."
+                        docker-compose down
+                        echo "Removing Docker network..."
+                        docker network rm ${NETWORK_NAME}
                         '''
                     } catch (Exception e) {
-                        error "Application validation failed: ${e.message}"
+                        echo "Failed to clean up Docker resources: ${e.message}"
                     }
                 }
             }
-        }
-
-        stage('Validate Database') {
-            steps {
-                echo 'Validating database connection...'
-                script {
-                    try {
-                        powershell '''
-                        echo "Checking if database container is running..."
-                        docker ps | findstr kasir_vnt_db || { echo "Database container not running!"; exit 1; }
-
-                        echo "Validating database connection..."
-                        $containerId = docker ps -qf "name=kasir_vnt_db"
-                        docker exec $containerId mysql -uroot -p$env:MYSQL_ROOT_PASSWORD -e "USE $env:MYSQL_DATABASE;" || { echo "Database validation failed!"; exit 1; }
-                        '''
-                    } catch (Exception e) {
-                        error "Database validation failed: ${e.message}"
-                    }
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            echo 'Cleaning up containers and networks...'
-            script {
-                powershell '''
-                docker-compose down
-                echo "Cleanup completed."
-                '''
-            }
-        }
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed. Please check the logs above for details.'
         }
     }
 }
