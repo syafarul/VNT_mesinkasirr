@@ -2,77 +2,55 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'kasir_vnt_app' // Nama image Docker Anda
-        NETWORK_NAME = 'kasir_vnt'    // Nama network Docker
-        MYSQL_ROOT_PASSWORD = 'farul123' // Password root MySQL
-        MYSQL_DATABASE = 'vnt_kasir'  // Nama database MySQL
-        REGISTRY = 'https://index.docker.io/v1/' // Registry Docker
+        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
     }
 
     stages {
-        stage('Preparation') {
+        // Stage 1: Checkout the code
+        stage('Checkout Code') {
             steps {
-                echo 'Checking Docker environment and cleaning up previous resources...'
-                script {
-                    try {
-                        sh '''
-                        echo "Checking if Docker is installed..."
-                        docker --version || { echo "Docker is not installed"; exit 1; }
-
-                        echo "Checking if Docker Compose is installed..."
-                        docker-compose --version || { echo "Docker Compose is not installed"; exit 1; }
-
-                        echo "Stopping and cleaning up previous containers..."
-                        docker-compose down || true
-
-                        echo "Removing Docker network if exists..."
-                        docker network rm ${NETWORK_NAME} || echo "Network does not exist, skipping."
-                        '''
-                    } catch (Exception e) {
-                        error "Preparation stage failed: ${e.message}"
-                    }
-                }
+                // Mengambil kode dari repository
+                checkout scm
             }
         }
 
+        // Stage 2: Build Docker Images
         stage('Build Docker Images') {
             steps {
-                echo 'Building Docker images...'
+                // Membangun image Docker menggunakan docker-compose
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker_kasirVNT', 
-                                                      usernameVariable: 'REGISTRY_USERNAME', 
-                                                      passwordVariable: 'REGISTRY_PASSWORD')]) {
-                        try {
-                            sh '''
-                            echo "Logging in to Docker registry..."
-                            docker login ${REGISTRY} -u $REGISTRY_USERNAME -p $REGISTRY_PASSWORD
-
-                            echo "Building images with Docker Compose..."
-                            docker-compose build --no-cache --pull
-
-                            echo "Pushing images to Docker registry..."
-                            docker-compose push
-                            '''
-                        } catch (Exception e) {
-                            error "Failed to build and push Docker images: ${e.message}"
-                        }
-                    }
+                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} build'
                 }
             }
         }
 
-        stage('Run Containers') {
+        // Stage 3: Start Docker Containers
+        stage('Start Docker Containers') {
             steps {
-                echo 'Starting containers with Docker Compose...'
+                // Menjalankan Docker Compose untuk memulai layanan
                 script {
-                    try {
-                        sh '''
-                        echo "Starting containers..."
-                        docker-compose up -d
-                        '''
-                    } catch (Exception e) {
-                        error "Failed to start containers: ${e.message}"
-                    }
+                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} up -d'
+                }
+            }
+        }
+
+        // Stage 4: Run Tests
+        stage('Run Tests') {
+            steps {
+                // Contoh menjalankan tes, sesuaikan dengan kebutuhan aplikasi Anda
+                script {
+                    // Gantilah perintah ini dengan perintah tes Anda
+                    sh 'docker exec kasir_vnt_app php artisan test'
+                }
+            }
+        }
+
+        // Stage 5: Cleanup Docker Containers
+        stage('Cleanup') {
+            steps {
+                // Menurunkan dan menghapus container setelah tes selesai
+                script {
+                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} down'
                 }
             }
         }
@@ -80,16 +58,9 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up temporary resources...'
-            script {
-                sh '''
-                echo "Stopping containers..."
-                docker-compose down || true
-
-                echo "Removing Docker network..."
-                docker network rm ${NETWORK_NAME} || echo "Network does not exist, skipping."
-                '''
-            }
+            // Menjaga container tetap bersih, membersihkan jika terjadi kesalahan
+            echo 'Cleaning up after build...'
+            sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} down'
         }
     }
 }
