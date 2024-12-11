@@ -3,7 +3,7 @@ version: '3'
 services:
   app:
     build:
-      context: .
+      context: .  # Lokasi Dockerfile untuk membangun image
     image: kasir_vnt_app
     container_name: kasir_vnt_app
     restart: unless-stopped
@@ -14,7 +14,7 @@ services:
     volumes:
       - .:/var/www/kasir_vnt/
       - ./storage:/var/www/kasir_vnt/storage
-      - ./storage/php.ini:/usr/local/etc/php/conf.d/local.ini 
+      - ./storage/php.ini:/usr/local/etc/php/conf.d/local.ini  # Pastikan file php.ini ada
     networks:
       - kasir_vnt
 
@@ -24,11 +24,11 @@ services:
     restart: unless-stopped
     tty: true
     ports:
-      - "2022:80"
+      - "2022:80"  # Port publik untuk web server
     volumes:
       - .:/var/www/kasir_vnt
       - ./storage:/var/www/kasir_vnt/storage
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf  
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf  # Pastikan default.conf ada
     networks:
       - kasir_vnt
 
@@ -38,7 +38,7 @@ services:
     restart: always
     tty: true
     ports:
-      - "3306:3306" 
+      - "3306:3306"  # Ganti ke port standar MySQL jika tidak ada bentrokan port
     volumes:
       - kasir_vnt_data:/var/lib/mysql
     environment:
@@ -52,16 +52,16 @@ services:
     container_name: kasir_vnt_pma
     restart: always
     ports:
-      - "7000:80"
+      - "7000:80"  # Port untuk phpMyAdmin
     environment:
-      PMA_HOST: db  
+      PMA_HOST: db  # Menghubungkan phpMyAdmin ke service db
     networks:
       - kasir_vnt
 
 networks:
   kasir_vnt:
-    driver: bridge
+    driver: bridge  # Menggunakan jaringan bridge untuk komunikasi antar container
 
 volumes:
   kasir_vnt_data:
-    driver: local
+    driver: local  # Menggunakan volume lokal untuk menyimpan data MySQL
