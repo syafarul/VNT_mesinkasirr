@@ -23,7 +23,7 @@ pipeline {
                         docker-compose down || true
 
                         echo "Removing Docker network if exists..."
-                        docker network rm ${NETWORK_NAME} || echo "Network does not exist, skipping."
+                        docker network rm $env:NETWORK_NAME || echo "Network does not exist, skipping."
                         '''
                     } catch (Exception e) {
                         error "Preparation stage failed: ${e.message}"
@@ -54,9 +54,9 @@ pipeline {
                 script {
                     try {
                         powershell '''
-                        start docker-compose up -d
+                        docker-compose up -d
                         echo "Containers are starting, waiting for services to initialize..."
-                        sleep 20
+                        Start-Sleep -Seconds 20
 
                         echo "Showing running containers:"
                         docker ps
@@ -75,7 +75,7 @@ pipeline {
                     try {
                         powershell '''
                         echo "Checking if application container is running..."
-                        docker ps | findstr ${DOCKER_IMAGE} || { echo "Application container not running!"; exit 1; }
+                        docker ps | findstr $env:DOCKER_IMAGE || { echo "Application container not running!"; exit 1; }
 
                         echo "Checking application accessibility on port 2022..."
                         curl -I http://localhost:2022 -m 15 || { echo "Application not reachable!"; exit 1; }
@@ -97,7 +97,8 @@ pipeline {
                         docker ps | findstr kasir_vnt_db || { echo "Database container not running!"; exit 1; }
 
                         echo "Validating database connection..."
-                        docker exec $(docker ps -qf "name=kasir_vnt_db") mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "USE ${MYSQL_DATABASE};" || { echo "Database validation failed!"; exit 1; }
+                        $containerId = docker ps -qf "name=kasir_vnt_db"
+                        docker exec $containerId mysql -uroot -p$env:MYSQL_ROOT_PASSWORD -e "USE $env:MYSQL_DATABASE;" || { echo "Database validation failed!"; exit 1; }
                         '''
                     } catch (Exception e) {
                         error "Database validation failed: ${e.message}"
