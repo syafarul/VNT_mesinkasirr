@@ -1,81 +1,75 @@
 pipeline {
     agent any
+    environment {
+        // Definisikan variabel environment yang diperlukan
+        DOCKER_COMPOSE = 'docker-compose'
+        IMAGE_NAME = 'kasir_vnt_app'
+        CONTAINER_NAME = 'kasir_vnt_app'
+        PHP_IMAGE = 'php:7.4-fpm' // Ganti sesuai dengan versi PHP yang Anda pakai
+    }
+
     stages {
-        stage("Verify tooling") {
+        stage('Checkout') {
             steps {
-                sh '''
-                    docker info
-                    docker version
-                    docker compose version
-                '''
+                // Checkout kode dari repository
+                checkout scm
             }
         }
-        stage("Verify SSH connection to server") {
-            steps {
-                sshagent(credentials: ['aws-ec2']) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app whoami
-                    '''
-                }
-            }
-        }        
-        stage("Clear all running docker containers") {
+
+        stage('Build Docker Images') {
             steps {
                 script {
-                    try {
-                        sh 'docker rm -f $(docker ps -a -q)'
-                    } catch (Exception e) {
-                        echo 'No running container to clear up...'
-                    }
+                    // Build Docker Image untuk aplikasi
+                    sh 'docker-compose -f docker-compose.yml build'
                 }
             }
         }
-        stage("Start Docker") {
+
+        stage('Run Tests') {
             steps {
-                sh 'make up'
-                sh 'docker compose ps'
-            }
-        }
-        stage("Run Composer Install") {
-            steps {
-                sh 'docker compose run --rm composer install'
-            }
-        }
-        stage("Populate .env file") {
-            steps {
-                dir("/var/lib/jenkins/workspace/envs/laravel-test") {
-                    fileOperations([fileCopyOperation(excludes: '', flattenFiles: true, includes: '.env', targetLocation: "${WORKSPACE}")])
+                script {
+                    // Jalankan tes Laravel, misalnya menggunakan PHPUnit
+                    sh 'docker-compose run --rm app ./vendor/bin/phpunit'
                 }
             }
-        }              
-        stage("Run Tests") {
+        }
+
+        stage('Build Frontend (Optional)') {
             steps {
-                sh 'docker compose run --rm artisan test'
+                script {
+                    // Build frontend jika diperlukan (misalnya, menggunakan npm/yarn)
+                    sh 'docker-compose run --rm app npm install'
+                    sh 'docker-compose run --rm app npm run prod'
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    // Deployment aplikasi ke server atau environment
+                    // Contoh dengan docker-compose up untuk menjalankan container
+                    sh 'docker-compose -f docker-compose.yml up -d'
+                }
+            }
+        }
+
+        stage('Post-Deploy Checks') {
+            steps {
+                script {
+                    // Post-deployment: Misalnya, verifikasi aplikasi berjalan dengan baik
+                    sh 'docker-compose ps'
+                }
             }
         }
     }
+
     post {
         success {
-            sh 'cd "/var/lib/jenkins/workspace/LaravelTest"'
-            sh 'rm -rf artifact.zip'
-            sh 'zip -r artifact.zip . -x "node_modules*"'
-            withCredentials([sshUserPrivateKey(credentialsId: "aws-ec2", keyFileVariable: 'keyfile')]) {
-                sh 'scp -v -o StrictHostKeyChecking=no -i ${keyfile} /var/lib/jenkins/workspace/LaravelTest/artifact.zip ec2-user@gorgeous-marten-decent.ngrok-free.app:/home/ec2-user/artifact'
-            }
-            sshagent(credentials: ['aws-ec2']) {
-                sh 'ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app unzip -o /home/ec2-user/artifact/artifact.zip -d /var/www/html'
-                script {
-                    try {
-                        sh 'ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app sudo chmod 777 /var/www/html/storage -R'
-                    } catch (Exception e) {
-                        echo 'Some file permissions could not be updated.'
-                    }
-                }
-            }                                  
+            echo 'Pipeline Succeeded!'
         }
-        always {
-            sh 'docker compose down --remove-orphans -v'
-            sh 'docker compose ps'
+        failure {
+            echo 'Pipeline Failed!'
         }
     }
 }
