@@ -1,66 +1,81 @@
 pipeline {
     agent any
-
-    environment {
-        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
-    }
-
     stages {
-        // Stage 1: Checkout the code
-        stage('Checkout Code') {
+        stage("Verify tooling") {
             steps {
-                // Mengambil kode dari repository
-                checkout scm
+                sh '''
+                    docker info
+                    docker version
+                    docker compose version
+                '''
             }
         }
-
-        // Stage 2: Build Docker Images
-        stage('Build Docker Images') {
+        stage("Verify SSH connection to server") {
             steps {
-                // Membangun image Docker menggunakan docker-compose
+                sshagent(credentials: ['aws-ec2']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app whoami
+                    '''
+                }
+            }
+        }        
+        stage("Clear all running docker containers") {
+            steps {
                 script {
-                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} build'
+                    try {
+                        sh 'docker rm -f $(docker ps -a -q)'
+                    } catch (Exception e) {
+                        echo 'No running container to clear up...'
+                    }
                 }
             }
         }
-
-        // Stage 3: Start Docker Containers
-        stage('Start Docker Containers') {
+        stage("Start Docker") {
             steps {
-                // Menjalankan Docker Compose untuk memulai layanan
-                script {
-                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} up -d'
-                }
+                sh 'make up'
+                sh 'docker compose ps'
             }
         }
-
-        // Stage 4: Run Tests
-        stage('Run Tests') {
+        stage("Run Composer Install") {
             steps {
-                // Contoh menjalankan tes, sesuaikan dengan kebutuhan aplikasi Anda
-                script {
-                    // Gantilah perintah ini dengan perintah tes Anda
-                    sh 'docker exec kasir_vnt_app php artisan test'
-                }
+                sh 'docker compose run --rm composer install'
             }
         }
-
-        // Stage 5: Cleanup Docker Containers
-        stage('Cleanup') {
+        stage("Populate .env file") {
             steps {
-                // Menurunkan dan menghapus container setelah tes selesai
-                script {
-                    sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} down'
+                dir("/var/lib/jenkins/workspace/envs/laravel-test") {
+                    fileOperations([fileCopyOperation(excludes: '', flattenFiles: true, includes: '.env', targetLocation: "${WORKSPACE}")])
                 }
+            }
+        }              
+        stage("Run Tests") {
+            steps {
+                sh 'docker compose run --rm artisan test'
             }
         }
     }
-
     post {
+        success {
+            sh 'cd "/var/lib/jenkins/workspace/LaravelTest"'
+            sh 'rm -rf artifact.zip'
+            sh 'zip -r artifact.zip . -x "node_modules*"'
+            withCredentials([sshUserPrivateKey(credentialsId: "aws-ec2", keyFileVariable: 'keyfile')]) {
+                sh 'scp -v -o StrictHostKeyChecking=no -i ${keyfile} /var/lib/jenkins/workspace/LaravelTest/artifact.zip ec2-user@gorgeous-marten-decent.ngrok-free.app:/home/ec2-user/artifact'
+            }
+            sshagent(credentials: ['aws-ec2']) {
+                sh 'ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app unzip -o /home/ec2-user/artifact/artifact.zip -d /var/www/html'
+                script {
+                    try {
+                        sh 'ssh -o StrictHostKeyChecking=no ec2-user@gorgeous-marten-decent.ngrok-free.app sudo chmod 777 /var/www/html/storage -R'
+                    } catch (Exception e) {
+                        echo 'Some file permissions could not be updated.'
+                    }
+                }
+            }                                  
+        }
         always {
-            // Menjaga container tetap bersih, membersihkan jika terjadi kesalahan
-            echo 'Cleaning up after build...'
-            sh 'docker-compose -f ${DOCKER_COMPOSE_FILE} down'
+            sh 'docker compose down --remove-orphans -v'
+            sh 'docker compose ps'
         }
     }
 }
