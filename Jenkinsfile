@@ -1,75 +1,68 @@
 pipeline {
     agent any
-    environment {
-        // Definisikan variabel environment yang diperlukan
-        DOCKER_COMPOSE = 'docker-compose'
-        IMAGE_NAME = 'kasir_vnt_app'
-        CONTAINER_NAME = 'kasir_vnt_app'
-        PHP_IMAGE = 'php:7.4-fpm' // Ganti sesuai dengan versi PHP yang Anda pakai
-    }
-
     stages {
-        stage('Checkout') {
+        stage("Verify tooling") {
             steps {
-                // Checkout kode dari repository
-                checkout scm
+                sh '''
+                    docker info
+                    docker version
+                    docker compose version
+                '''
             }
         }
-
-        stage('Build Docker Images') {
+        stage("Clear all running docker containers") {
             steps {
-                script {
-                    // Build Docker Image untuk aplikasi
-                    sh 'docker-compose -f docker-compose.yml build'
+                ansiblePlaybook(
+                    playbook: 'ansible/clear_containers.yml',
+                    inventory: 'ansible/inventory.ini'
+                )
+            }
+        }
+        stage("Start Docker Services") {
+            steps {
+                sh 'make up'
+                sh 'docker compose ps'
+            }
+        }
+        stage("Run Composer Install") {
+            steps {
+                sh 'docker compose run --rm composer install'
+            }
+        }
+        stage("Populate .env file") {
+            steps {
+                dir("/var/lib/jenkins/workspace/envs/laravel-test") {
+                    fileOperations([fileCopyOperation(excludes: '', flattenFiles: true, includes: '.env', targetLocation: "${WORKSPACE}")])
                 }
             }
         }
-
-        stage('Run Tests') {
+        stage("Run Tests") {
             steps {
-                script {
-                    // Jalankan tes Laravel, misalnya menggunakan PHPUnit
-                    sh 'docker-compose run --rm app ./vendor/bin/phpunit'
-                }
-            }
-        }
-
-        stage('Build Frontend (Optional)') {
-            steps {
-                script {
-                    // Build frontend jika diperlukan (misalnya, menggunakan npm/yarn)
-                    sh 'docker-compose run --rm app npm install'
-                    sh 'docker-compose run --rm app npm run prod'
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                script {
-                    // Deployment aplikasi ke server atau environment
-                    // Contoh dengan docker-compose up untuk menjalankan container
-                    sh 'docker-compose -f docker-compose.yml up -d'
-                }
-            }
-        }
-
-        stage('Post-Deploy Checks') {
-            steps {
-                script {
-                    // Post-deployment: Misalnya, verifikasi aplikasi berjalan dengan baik
-                    sh 'docker-compose ps'
-                }
+                sh 'docker compose run --rm artisan test'
             }
         }
     }
-
     post {
         success {
-            echo 'Pipeline Succeeded!'
+            steps {
+                script {
+                    sh 'cd "/var/lib/jenkins/workspace/LaravelTest"'
+                    sh 'rm -rf artifact.zip'
+                    sh 'zip -r artifact.zip . -x "node_modules*"'
+                }
+                ansiblePlaybook(
+                    playbook: 'ansible/deploy_application.yml',
+                    inventory: 'ansible/inventory.ini',
+                    extraVars: [
+                        workspace: "${env.WORKSPACE}",
+                        artifact: "${env.WORKSPACE}/artifact.zip"
+                    ]
+                )
+            }
         }
-        failure {
-            echo 'Pipeline Failed!'
+        always {
+            sh 'docker compose down --remove-orphans -v'
+            sh 'docker compose ps'
         }
     }
 }
