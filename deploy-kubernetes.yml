@@ -1,0 +1,5 @@
+- name: Deploy Kasir VNT to Kubernetes
+  hosts: all
+  tasks:
+    - name: Apply Kubernetes Deployment
+      shell: kubectl apply -f /path/to/kubernetes/deployment.yml
