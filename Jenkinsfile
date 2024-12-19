@@ -1,68 +1,52 @@
 pipeline {
     agent any
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials-id') // ID kredensial DockerHub
+        ANSIBLE_SERVER = 'ansible.server.ip' // IP/Hostname server Ansible
+        KUBERNETES_SERVER = 'kubernetes.server.ip' // IP/Hostname server Kubernetes
+    }
     stages {
-        stage("Verify tooling") {
+        stage('Git Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Send Docker Compose to Ansible Server') {
             steps {
                 sh '''
-                    docker info
-                    docker version
-                    docker compose version
+                scp docker-compose.yml ansible@${ANSIBLE_SERVER}:/path/to/docker
+                scp -r ./nginx ansible@${ANSIBLE_SERVER}:/path/to/docker
+                scp -r ./storage ansible@${ANSIBLE_SERVER}:/path/to/docker
                 '''
             }
         }
-        stage("Clear all running docker containers") {
+        stage('Docker Compose Build and Push') {
             steps {
-                ansiblePlaybook(
-                    playbook: 'ansible/clear_containers.yml',
-                    inventory: 'ansible/inventory.ini'
-                )
+                sh '''
+                ssh ansible@${ANSIBLE_SERVER} "
+                    cd /path/to/docker &&
+                    docker-compose build &&
+                    docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW} &&
+                    docker-compose push
+                "
+                '''
             }
         }
-        stage("Start Docker Services") {
+        stage('Copy Kubernetes Deployment Files') {
             steps {
-                sh 'make up'
-                sh 'docker compose ps'
+                sh '''
+                scp kubernetes/deployment.yml ansible@${KUBERNETES_SERVER}:/path/to/kubernetes
+                '''
             }
         }
-        stage("Run Composer Install") {
+        stage('Kubernetes Deployment using Ansible') {
             steps {
-                sh 'docker compose run --rm composer install'
+                sh '''
+                ssh ansible@${KUBERNETES_SERVER} "
+                    ansible-playbook /path/to/kubernetes/deploy-kubernetes.yml
+                "
+                '''
             }
-        }
-        stage("Populate .env file") {
-            steps {
-                dir("/var/lib/jenkins/workspace/envs/laravel-test") {
-                    fileOperations([fileCopyOperation(excludes: '', flattenFiles: true, includes: '.env', targetLocation: "${WORKSPACE}")])
-                }
-            }
-        }
-        stage("Run Tests") {
-            steps {
-                sh 'docker compose run --rm artisan test'
-            }
-        }
-    }
-    post {
-        success {
-            steps {
-                script {
-                    sh 'cd "/var/lib/jenkins/workspace/LaravelTest"'
-                    sh 'rm -rf artifact.zip'
-                    sh 'zip -r artifact.zip . -x "node_modules*"'
-                }
-                ansiblePlaybook(
-                    playbook: 'ansible/deploy_application.yml',
-                    inventory: 'ansible/inventory.ini',
-                    extraVars: [
-                        workspace: "${env.WORKSPACE}",
-                        artifact: "${env.WORKSPACE}/artifact.zip"
-                    ]
-                )
-            }
-        }
-        always {
-            sh 'docker compose down --remove-orphans -v'
-            sh 'docker compose ps'
         }
     }
 }
