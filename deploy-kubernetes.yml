@@ -1,5 +1,56 @@
-- name: Deploy Kasir VNT to Kubernetes
-  hosts: all
-  tasks:
-    - name: Apply Kubernetes Deployment
-      shell: kubectl apply -f /path/to/kubernetes/deployment.yml
+# Deployment untuk aplikasi kasir-vnt
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kasir-vnt-app
+  labels:
+    app: kasir-vnt
+spec:
+  replicas: 3  # Menjalankan 3 replika pod
+  selector:
+    matchLabels:
+      app: kasir-vnt
+  template:
+    metadata:
+      labels:
+        app: kasir-vnt
+    spec:
+      containers:
+      - name: kasir-vnt-app
+        image: ${DOCKERHUB_CREDENTIALS_USR}/kasir_vnt_app:latest
+        ports:
+        - containerPort: 9000  # Menentukan port aplikasi di dalam kontainer
+
+---
+# Service untuk expose aplikasi ke luar Kubernetes
+apiVersion: v1
+kind: Service
+metadata:
+  name: kasir-vnt-service
+spec:
+  selector:
+    app: kasir-vnt
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9000  # Meneruskan ke port 9000 di kontainer
+  type: LoadBalancer  # Jika Anda ingin ekspos melalui LoadBalancer
+
+---
+# (Opsional) Ingress untuk mengatur akses HTTP/HTTPS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kasir-vnt-ingress
+spec:
+  rules:
+  - host: kasir-vnt.example.com  # Ganti dengan domain yang sesuai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kasir-vnt-service
+            port:
+              number: 80
