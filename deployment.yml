@@ -1,26 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kasir-vnt-deployment
+  name: kasir-vnt-app  # Nama deployment
+  labels:
+    app: kasir-vnt    # Label yang digunakan untuk memilih pod
 spec:
-  replicas: 3
+  replicas: 3  # Menjalankan 3 replika pod
   selector:
     matchLabels:
-      app: kasir-vnt
+      app: kasir-vnt  # Memilih pod yang memiliki label ini
   template:
     metadata:
       labels:
-        app: kasir-vnt
+        app: kasir-vnt  # Label yang akan digunakan oleh pod
     spec:
       containers:
-      - name: kasir-app
-        image: kasir_vnt_app:latest
+      - name: kasir-vnt-app  # Nama container
+        image: ${DOCKERHUB_CREDENTIALS_USR}/kasir_vnt_app:latest  # Docker image yang digunakan
         ports:
-        - containerPort: 80
-      - name: kasir-db
-        image: mysql:5.7
+        - containerPort: 9000  # Port yang diteruskan ke luar
         env:
-        - name: MYSQL_ROOT_PASSWORD
-          value: farul123
-        - name: MYSQL_DATABASE
-          value: vnt_kasir
+        - name: ENVIRONMENT
+          value: "production"  # Menetapkan environment variables jika diperlukan
