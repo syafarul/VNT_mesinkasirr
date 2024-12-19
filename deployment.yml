@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kasir-vnt-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kasir-vnt
+  template:
+    metadata:
+      labels:
+        app: kasir-vnt
+    spec:
+      containers:
+      - name: kasir-app
+        image: kasir_vnt_app:latest
+        ports:
+        - containerPort: 80
+      - name: kasir-db
+        image: mysql:5.7
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: farul123
+        - name: MYSQL_DATABASE
+          value: vnt_kasir
